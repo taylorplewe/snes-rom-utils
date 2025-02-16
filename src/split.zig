@@ -38,8 +38,14 @@ pub fn split(allocator: std.mem.Allocator, rom_file: std.fs.File, rom_file_path:
         return;
     };
     var iter: u8 = 0;
+
+    // separate rom file extension from main part
+    const last_index_of_period = std.mem.lastIndexOfScalar(u8, rom_file_path, '.');
+    const rom_file_name_base = rom_file_path[0..last_index_of_period.?];
+    const rom_file_ext = rom_file_path[last_index_of_period.?..];
+
     while (remaining_size > 0) : (remaining_size -= targ_size) {
-        const split_file_path = std.fmt.allocPrint(allocator, "{s}_{d}", .{ rom_file_path, iter }) catch unreachable;
+        const split_file_path = std.fmt.allocPrint(allocator, "{s}_{d:0>2}{s}", .{ rom_file_name_base, iter, rom_file_ext }) catch unreachable;
         const split_file = std.fs.cwd().createFile(split_file_path, .{}) catch {
             disp.printError("could not create split file");
             return;
