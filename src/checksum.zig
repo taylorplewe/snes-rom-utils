@@ -18,9 +18,6 @@ pub fn fixChecksum(rom_file: std.fs.File) void {
     disp.printLoading("calculating checksum");
     while (true) {
         checksum +%= rom_reader.takeByte() catch break;
-        if (file_len == 0) {
-            disp.print("first byte: {x}\n", .{checksum});
-        }
         file_len += 1;
     }
     disp.print("checksum: \x1b[33m0x{x}\x1b[0m\n", .{checksum});
@@ -30,28 +27,14 @@ pub fn fixChecksum(rom_file: std.fs.File) void {
     disp.printLoading("writing checksum to ROM header");
     var header_buf: [32]u8 = undefined;
     for (possible_header_addrs) |addr| {
-        disp.print("{x}: ", .{addr});
         rom_reader_core.seekTo(addr) catch {
             disp.printErrorAndExit("could not seek file");
             continue;
         };
-        for (header_buf) |b| {
-            std.debug.print("{c}", .{b});
-        }
-        std.debug.print("\n", .{});
-        _ = rom_reader.readSliceAll(&header_buf) catch |e| {
-            if (e == error.EndOfStream) {
-                std.debug.print("end of stream\n", .{});
-                continue;
-            }
-            disp.print("{}", .{e});
-            disp.printErrorAndExit("could not read file into buffer: {}");
+        _ = rom_reader.readSliceShort(&header_buf) catch {
+            disp.printErrorAndExit("could not read file into buffer");
             continue;
         };
-        for (header_buf) |b| {
-            std.debug.print("{c}", .{b});
-        }
-        std.debug.print("\n", .{});
         if (checkForHeader(&header_buf)) {
             var rom_writer_buf: [1024]u8 = undefined;
             var rom_writer_core = rom_file.writer(&rom_writer_buf);
@@ -59,8 +42,6 @@ pub fn fixChecksum(rom_file: std.fs.File) void {
             rom_writer_core.seekTo(addr + 0x1c) catch {
                 disp.printErrorAndExit("could not seek file for writing");
             };
-            disp.print("writer true position: {x}\n", .{rom_writer_core.pos});
-            disp.print("writer logical position: {x}\n", .{rom_writer_core.pos + rom_writer_buf.len});
             rom_writer.writeInt(u16, checksum ^ 0xffff, std.builtin.Endian.little) catch {
                 disp.printErrorAndExit("could not write checksum complement to file");
             };
