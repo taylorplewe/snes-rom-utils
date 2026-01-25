@@ -3,14 +3,18 @@ const disp = @import("disp.zig");
 
 pub fn split(allocator: std.mem.Allocator, rom_file: std.fs.File, rom_file_path: []const u8) void {
     // get size in KiB from user
-    var targ_size_input: []const u8 = undefined;
+    var targ_size_input: []u8 = undefined;
     var targ_size: u64 = 0;
     while (true) {
+        var reader_buf: [1024]u8 = undefined;
+        var stdin_core = std.fs.File.stdin().reader(&reader_buf);
+        var stdin = &stdin_core.interface;
+
         disp.print("What size KiB chunks (512, 1024, or 2048)? ", .{});
-        targ_size_input = std.io.getStdIn().reader().readUntilDelimiterAlloc(allocator, '\n', 8) catch {
-            disp.printError("could not read input from user");
+        targ_size_input = stdin.takeDelimiter('\n') catch {
+            disp.printErrorAndExit("could not read input from user");
             std.process.exit(1);
-        };
+        } orelse &.{};
         targ_size = std.fmt.parseInt(u64, std.mem.trimRight(u8, targ_size_input, "\n\r"), 10) catch {
             disp.print("please provide a numeric value!\n", .{});
             continue;
@@ -23,7 +27,7 @@ pub fn split(allocator: std.mem.Allocator, rom_file: std.fs.File, rom_file_path:
     // get file size
     rom_file.seekFromEnd(0) catch unreachable;
     var remaining_size = rom_file.getPos() catch {
-        disp.printError("could not get size of file");
+        disp.printErrorAndExit("could not get size of file");
         return;
     };
     if (remaining_size < targ_size) {
@@ -34,7 +38,7 @@ pub fn split(allocator: std.mem.Allocator, rom_file: std.fs.File, rom_file_path:
     // write split files
     rom_file.seekTo(0) catch unreachable;
     const buf = allocator.alloc(u8, targ_size) catch {
-        disp.printError("could not allocate buffer");
+        disp.printErrorAndExit("could not allocate buffer");
         return;
     };
     var iter: u8 = 0;
@@ -47,17 +51,15 @@ pub fn split(allocator: std.mem.Allocator, rom_file: std.fs.File, rom_file_path:
     while (remaining_size > 0) : (remaining_size -= targ_size) {
         const split_file_path = std.fmt.allocPrint(allocator, "{s}_{d:0>2}{s}", .{ rom_file_name_base, iter, rom_file_ext }) catch unreachable;
         const split_file = std.fs.cwd().createFile(split_file_path, .{}) catch {
-            disp.printError("could not create split file");
+            disp.printErrorAndExit("could not create split file");
             return;
         };
         defer split_file.close();
         _ = rom_file.read(buf) catch {
-            disp.printError("could not read ROM file into split buffer");
-            return;
+            disp.printErrorAndExit("could not read ROM file into split buffer");
         };
         _ = split_file.write(buf) catch {
-            disp.printError("could not write split buffer into split file");
-            return;
+            disp.printErrorAndExit("could not write split buffer into split file");
         };
         iter += 1;
     }
