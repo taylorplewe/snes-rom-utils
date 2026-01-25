@@ -1,5 +1,6 @@
 const std = @import("std");
 const disp = @import("disp.zig");
+const info = @import("info.zig");
 const checksum = @import("checksum.zig");
 const split = @import("split.zig");
 
@@ -8,7 +9,7 @@ pub fn main() void {
     defer arena.deinit();
 
     const args = std.process.argsAlloc(arena.allocator()) catch {
-        disp.printError("unable to allocate memory for arguments");
+        disp.printErrorAndExit("unable to allocate memory for arguments");
         std.process.exit(1);
     };
     if (args.len < 3) printUsageAndExit();
@@ -17,16 +18,18 @@ pub fn main() void {
     const rom_path = args[2];
 
     const rom_file = std.fs.cwd().openFile(rom_path, .{ .mode = .read_write }) catch {
-        disp.printError("could not open file");
+        disp.printErrorAndExit("could not open file");
         std.process.exit(1);
     };
 
-    if (std.mem.eql(u8, util_name, "fix-checksum")) {
-        checksum.fixChecksum(arena.allocator(), rom_file);
+    if (std.mem.eql(u8, util_name, "info")) {
+        info.displayInfo();
+    } else if (std.mem.eql(u8, util_name, "fix-checksum")) {
+        checksum.fixChecksum(rom_file);
     } else if (std.mem.eql(u8, util_name, "split")) {
         split.split(arena.allocator(), rom_file, rom_path);
     } else {
-        disp.printError("util with the name provided not found!");
+        disp.printErrorAndExit("util with the name provided not found!");
         std.process.exit(1);
     }
 }
