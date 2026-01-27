@@ -30,7 +30,7 @@ pub fn main() void {
     } else if (std.mem.eql(u8, util_name, "split")) {
         split.split(arena.allocator(), rom_file, rom_path);
     } else if (std.mem.eql(u8, util_name, "patch")) {
-        patch.patch(args[2..]);
+        patch.patch(arena.allocator(), args[2..]);
     } else {
         disp.printErrorAndExit("util with the name provided not found!");
         std.process.exit(1);

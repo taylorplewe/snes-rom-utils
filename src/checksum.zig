@@ -12,16 +12,13 @@ pub fn fixChecksum(rom_file: std.fs.File) void {
     var rom_reader = &rom_reader_core.interface;
 
     var checksum: u16 = 0;
-    var file_len: u64 = 0;
 
     // calculate checksum
     disp.printLoading("calculating checksum");
     while (true) {
         checksum +%= rom_reader.takeByte() catch break;
-        file_len += 1;
     }
     disp.print("checksum: \x1b[33m0x{x}\x1b[0m\n", .{checksum});
-    disp.print("file length: \x1b[33m{}\x1b[0m\n", .{file_len});
 
     // write checksum to ROM header
     disp.printLoading("writing checksum to ROM header");
