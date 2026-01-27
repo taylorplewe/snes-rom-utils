@@ -3,6 +3,7 @@ const disp = @import("disp.zig");
 const info = @import("info.zig");
 const checksum = @import("checksum.zig");
 const split = @import("split.zig");
+const patch = @import("patch.zig");
 
 pub fn main() void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -28,6 +29,8 @@ pub fn main() void {
         checksum.fixChecksum(rom_file);
     } else if (std.mem.eql(u8, util_name, "split")) {
         split.split(arena.allocator(), rom_file, rom_path);
+    } else if (std.mem.eql(u8, util_name, "patch")) {
+        patch.patch(args[2..]);
     } else {
         disp.printErrorAndExit("util with the name provided not found!");
         std.process.exit(1);
@@ -35,7 +38,7 @@ pub fn main() void {
 }
 
 fn printUsageAndExit() void {
-    disp.print("\x1b[1;33msnestils.exe:\x1b[0m modify an SNES ROM for use with real hardware\n" ++
+    disp.print("\x1b[1;33msnestils.exe:\x1b[0m modify an SNES ROM\n" ++
         "usage: \x1b[34msnestils <util> <path-to-rom>\x1b[0m\n" ++
         "  \x1b[34m<util> \x1b[0m=\n" ++
         "    \x1b[33minfo\x1b[0m - print out all the information about a ROM according to its header\n" ++
