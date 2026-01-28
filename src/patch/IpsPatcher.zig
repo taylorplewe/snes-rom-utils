@@ -12,8 +12,7 @@ const IpsPatchRecord = packed struct {
 
 pub fn init(allocator: *const std.mem.Allocator, patch_file: std.fs.File) Patcher {
     const patch_reader_buf = allocator.alloc(u8, std.math.maxInt(u16)) catch fatal("could not allocate memory for patch file reader buffer", .{});
-    var patch_reader_core = patch_file.reader(patch_reader_buf);
-    const patch_reader = &patch_reader_core.interface;
+    const patch_reader_core = patch_file.reader(patch_reader_buf);
 
     return .{
         .vtable = &.{
@@ -24,18 +23,16 @@ pub fn init(allocator: *const std.mem.Allocator, patch_file: std.fs.File) Patche
         .allocator = allocator,
         .reader_buf = patch_reader_buf,
         .reader_core = patch_reader_core,
-        .reader = patch_reader,
     };
 }
 
 fn validate(self: *Patcher) void {
-    std.debug.print("{s}\n", .{self.reader.peekArray(10) catch ""});
     const patch_file_len = self.reader_core.getSize() catch fatal("could not get patch file size", .{});
-    if (!std.mem.eql(u8, self.reader.peekArray(5) catch "", "PATCH")) {
+    if (!std.mem.eql(u8, self.reader().peekArray(5) catch "", "PATCH")) {
         fatal("IPS patch files must begin with the word \"PATCH\"", .{});
     }
     self.reader_core.seekTo(patch_file_len - 3) catch unreachable;
-    if (!std.mem.eql(u8, self.reader.peekArray(3) catch "", "EOF")) {
+    if (!std.mem.eql(u8, self.reader().peekArray(3) catch "", "EOF")) {
         fatal("IPS patch files must end with the word \"EOF\"", .{});
     }
 }
@@ -54,16 +51,17 @@ fn apply(self: *Patcher, rom_file_path: []const u8) void {
     var patched_rom_writer_core = patched_rom_file.writer(patched_rom_writer_buf);
     const patched_rom_writer = &patched_rom_writer_core.interface;
 
+    self.reader_core.seekTo(5) catch unreachable;
     const patch_file_len = self.reader_core.getSize() catch fatal("could not get patch file size", .{});
     while (self.reader_core.logicalPos() < patch_file_len - 3) {
-        const record = self.reader.takeStruct(IpsPatchRecord, .big) catch fatal("could not get IpsPatchRecord", .{});
+        const record = self.reader().takeStruct(IpsPatchRecord, .big) catch fatal("could not get IpsPatchRecord", .{});
 
-        self.reader_core.seekTo(record.offset) catch fatal("could not seek patched ROM file to offset", .{});
+        patched_rom_writer_core.seekTo(record.offset) catch fatal("could not seek patched ROM file to offset \x1b[1m0x{x}\x1b[0m", .{record.offset});
         if (record.length > 0) {
-            self.reader.streamExact(patched_rom_writer, record.length) catch fatal("could not stream data from patch file to patched ROM file", .{});
+            self.reader().streamExact(patched_rom_writer, record.length) catch fatal("could not stream data from patch file to patched ROM file", .{});
         } else {
-            const rle_length = self.reader.takeInt(u16, .big) catch fatal("could not read RLE length", .{});
-            const rle_byte = self.reader.takeByte() catch fatal("could not read RLE byte", .{});
+            const rle_length = self.reader().takeInt(u16, .big) catch fatal("could not read RLE length", .{});
+            const rle_byte = self.reader().takeByte() catch fatal("could not read RLE byte", .{});
             for (0..rle_length) |_| {
                 patched_rom_writer.writeByte(rle_byte) catch fatal("could not write RLE byte", .{});
             }

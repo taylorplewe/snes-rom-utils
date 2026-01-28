@@ -26,6 +26,10 @@ pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
         else => fatal("unsupported patch file extension \x1b[1m{s}\x1b[0m", .{patch_file_ext}),
     };
 
+    disp.printLoading("patching ROM");
+
     patcher.validate();
     patcher.apply(rom_path);
+
+    disp.clearAndPrint("\x1b[32mROM file \x1b[0;1m{s}\x1b[0;32m patched successfully", .{rom_path});
 }

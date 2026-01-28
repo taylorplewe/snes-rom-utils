@@ -7,7 +7,6 @@ allocator: *const std.mem.Allocator,
 
 reader_buf: []u8,
 reader_core: std.fs.File.Reader,
-reader: *std.io.Reader,
 
 pub const VTable = struct {
     /// Validate that the file meets the format criteria
@@ -23,4 +22,8 @@ pub fn validate(self: *Patcher) void {
 
 pub fn apply(self: *Patcher, rom_file_path: []const u8) void {
     self.vtable.apply(self, rom_file_path);
+}
+
+pub inline fn reader(self: *Patcher) *std.io.Reader {
+    return &self.reader_core.interface;
 }
