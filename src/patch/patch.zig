@@ -1,5 +1,5 @@
 const std = @import("std");
-const disp = @import("disp.zig");
+const disp = @import("../disp.zig");
 
 const IpsPatchRecord = packed struct {
     length: u16,
