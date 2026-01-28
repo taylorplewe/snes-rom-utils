@@ -25,7 +25,7 @@ pub fn main() void {
     } else if (std.mem.eql(u8, util_name, "split")) {
         split.split(arena.allocator(), rom_file, rom_path);
     } else if (std.mem.eql(u8, util_name, "patch")) {
-        patch.patch(arena.allocator(), args[2..]);
+        patch.patch(&arena.allocator(), args[2..]);
     } else {
         fatal("util with the name \x1b[1m{s}\x1b[0m not found", .{util_name});
     }
