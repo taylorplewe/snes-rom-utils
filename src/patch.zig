@@ -66,12 +66,11 @@ pub fn patch(allocator: std.mem.Allocator, args: [][:0]u8) void {
     patch_reader_core.seekTo(5) catch unreachable;
 
     // perform patch
-    while (patch_reader_core.pos < patch_file_len - 3) {
+    while (patch_reader_core.logicalPos() < patch_file_len - 3) {
         const record = patch_reader.takeStruct(IpsPatchRecord, .big) catch {
             disp.printErrorAndExit("could not get IpsPatchRecord");
             return;
         };
-        disp.print("offset: {x}, length: {x}\n", .{ record.offset, record.length });
 
         patched_rom_writer_core.seekTo(record.offset) catch {
             disp.printErrorAndExit("could not seek patched ROM file to offset");
