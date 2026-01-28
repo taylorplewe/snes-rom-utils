@@ -6,7 +6,6 @@ const IpsPatcher = @import("./IpsPatcher.zig");
 
 const PatchFormat = enum {
     ips,
-    ups,
 };
 
 pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
@@ -23,7 +22,6 @@ pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
 
     var patcher: Patcher = switch (patch_format) {
         .ips => IpsPatcher.init(allocator, patch_file),
-        else => fatal("unsupported patch file extension \x1b[1m{s}\x1b[0m", .{patch_file_ext}),
     };
 
     disp.printLoading("patching ROM");
