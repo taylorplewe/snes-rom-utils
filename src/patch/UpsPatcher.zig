@@ -39,61 +39,45 @@ fn apply(self: *Patcher) void {
     var printed = false;
     while (self.patch_file_reader.logicalPos() < patch_file_len - 12) {
         const bytes_to_skip = takeVariableWidthInteger(self);
-        if (!printed) {
-            std.debug.print("bytes to skip: {}\n", .{bytes_to_skip});
-        }
         if (bytes_to_skip > 0) {
             if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
                 // _ = self.patchedRomWriter().splatByte(0, bytes_to_skip) catch fatal("could not write 0s to patched ROM file", .{});
                 for (0..bytes_to_skip) |_| {
                     _ = self.patchedRomWriter().writeByte(0) catch fatal("could not write 0s to patched ROM file", .{});
+                    self.patchedRomWriter().flush() catch unreachable;
                 }
             } else {
-                if (!printed) {
-                    std.debug.print(" original rom pos: {}\n", .{self.original_rom_file_reader.logicalPos()});
-                }
                 self.original_rom_file_reader.seekBy(@intCast(bytes_to_skip)) catch fatal("could not seek original ROM file", .{});
                 self.patched_rom_file_writer.seekTo(self.original_rom_file_reader.logicalPos()) catch fatal("could not seek patched ROM file", .{});
-                if (!printed) {
-                    std.debug.print(" original rom pos AFTER skip: {}\n", .{self.original_rom_file_reader.logicalPos()});
-                }
             }
         }
 
         var patch_byte_to_xor = self.patchReader().takeByte() catch fatal("could not read XOR byte from patch file", .{});
         while (patch_byte_to_xor != 0) {
-            if (!printed) {
-                std.debug.print("byte: 0x{X}\n", .{patch_byte_to_xor});
-            }
-            if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
-                // std.debug.print("HIT MAX\n", .{});
-                // std.debug.print(" BEFORE PATCHED ROM WRITE current original rom pos: {} pos pos: {}\n", .{ self.original_rom_file_reader.logicalPos(), self.original_rom_file_reader.pos });
-                self.patchedRomWriter().writeByte(patch_byte_to_xor) catch fatal("could not write byte to patched ROM file", .{});
-                // std.debug.print(" AFTER PATCHED ROM WRITE current original rom pos: {} pos pos: {}\n", .{ self.original_rom_file_reader.logicalPos(), self.original_rom_file_reader.pos });
-            } else {
-                if (self.original_rom_file_reader.logicalPos() > 3_000_000) {
-                    // std.debug.print(" current original rom pos: {} pos pos: {}\n", .{ self.original_rom_file_reader.logicalPos(), self.original_rom_file_reader.pos });
-                }
-                const original_byte = self.originalRomReader().takeByte() catch fatal("could not read byte from original ROM file", .{});
-                self.patchedRomWriter().writeByte(original_byte ^ patch_byte_to_xor) catch fatal("could not write XOR'd byte to patched ROM file", .{});
-            }
+            const byte_to_write = patch_byte_to_xor ^
+                if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len)
+                    0
+                else
+                    self.originalRomReader().takeByte() catch fatal("could not read byte from original ROM file", .{});
+
+            self.patchedRomWriter().writeByte(byte_to_write) catch fatal("could not write XOR'd byte to patched ROM file", .{});
+            self.patchedRomWriter().flush() catch unreachable;
 
             patch_byte_to_xor = self.patchReader().takeByte() catch fatal("could not read XOR byte from patch file", .{});
         }
 
-        if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
-            self.patchedRomWriter().writeByte(0) catch fatal("could not write 0 to patched ROM file", .{});
-        } else {
-            self.originalRomReader().discardAll(1) catch fatal("could not discard byte from original ROM file", .{});
-            self.patched_rom_file_writer.seekTo(self.original_rom_file_reader.logicalPos()) catch fatal("could not seek patched ROM file", .{});
+        if (self.patch_file_reader.logicalPos() < patch_file_len - 12) {
+            if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
+                self.patchedRomWriter().writeByte(0) catch fatal("could not write 0 to patched ROM file", .{});
+                self.patchedRomWriter().flush() catch unreachable;
+            } else {
+                self.originalRomReader().discardAll(1) catch fatal("could not discard byte from original ROM file", .{});
+                self.patched_rom_file_writer.seekTo(self.original_rom_file_reader.logicalPos()) catch fatal("could not seek patched ROM file", .{});
+            }
         }
 
-        if (!printed) {
-            std.debug.print("\n\n\n", .{});
-        }
         printed = true;
     }
-    self.patchedRomWriter().flush() catch fatal("could not flush patched ROM writer", .{});
 }
 
 fn takeVariableWidthInteger(self: *Patcher) usize {
