@@ -103,6 +103,20 @@ fn takeVariableWidthInteger(self: *Patcher) usize {
     return result;
 }
 
+fn calcCrc32(data: []const u8) u32 {
+    var crc32: u32 = 0xffffffff;
+    for (data) |byte| {
+        crc32 ^= byte;
+        crc32 = (crc32 >> 8) ^ crc32_table[crc32 & 0xff];
+    }
+    return ~crc32;
+}
+
+test calcCrc32 {
+    try std.testing.expectEqual(0x8587D865, calcCrc32("abcde"));
+    try std.testing.expectEqual(0x0f5cc4b4, calcCrc32(&[_]u8{ 0xf3, 0x85, 0x9a, 0x84, 0xfc, 0x24, 0xde, 0x22 }));
+}
+
 pub const crc32_table = blk: {
     var table: [256]u32 = undefined;
     table[0] = 0;
