@@ -1,3 +1,5 @@
+// the UPS patch file format documentation I used can be found here: http://justsolve.archiveteam.org/wiki/UPS_(binary_patch_format)
+
 const std = @import("std");
 const disp = @import("../disp.zig");
 const fatal = disp.fatal;
@@ -24,26 +26,55 @@ pub fn init(
 }
 
 fn validate(self: *Patcher) void {
+    // "UPS1" string
     if (!std.mem.eql(u8, self.patchReader().peekArray(4) catch "", "UPS1")) {
         fatal("UPS patch files must begin with the word \"UPS1\"", .{});
     }
+
+    // original ROM checksum
+    const patch_file_size = self.patch_file_reader.getSize() catch fatal("could not get size of patch file", .{});
+    self.patch_file_reader.seekTo(patch_file_size - 12) catch fatal("could not seek to original ROM checksum in patch file", .{});
+    {
+        const checksum_expected = self.patchReader().takeInt(u32, .little) catch fatal("could not get original ROM checksum in patch file", .{});
+        const checksum_actual = calcCrc32FromFileReader(self.original_rom_file_reader, null);
+        if (checksum_expected != checksum_actual) {
+            fatal("original ROM checksum does not match calculated checksum\n  expected: 0x{x:0>8}\n  actual: 0x{x:0>8}\n", .{ checksum_expected, checksum_actual });
+        } else {
+            disp.clearAndPrint("\x1b[32moriginal ROM checksum matches calculated checksum (\x1b[0;1m0x{x:0>8}\x1b[0;32m)\x1b[0m\n", .{checksum_actual});
+        }
+    }
+
+    // patch file checksum
+    self.patch_file_reader.seekTo(patch_file_size - 4) catch fatal("could not seek to final checksum in patch file", .{});
+    {
+        const checksum_expected = self.patchReader().takeInt(u32, .little) catch fatal("could not get final checksum in patch file", .{});
+        const checksum_actual = calcCrc32FromFileReader(self.patch_file_reader, patch_file_size - 4);
+        if (checksum_expected != checksum_actual) {
+            fatal("patch file checksum does not match calculated checksum\n  expected: 0x{x:0>8}\n  actual: 0x{x:0>8}\n", .{ checksum_expected, checksum_actual });
+        } else {
+            disp.clearAndPrint("\x1b[32mpatch file checksum matches calculated checksum (\x1b[0;1m0x{x:0>8}\x1b[0;32m)\x1b[0m\n", .{checksum_actual});
+        }
+    }
+
+    // file sizes
     self.patch_file_reader.seekTo(4) catch fatal("could not seek patch file", .{});
-    const expected_size_original_rom = takeVariableWidthInteger(self);
-    const original_rom_file_len = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size", .{});
-    if (expected_size_original_rom != original_rom_file_len) {
-        fatal("original ROM file size does not match expected size.\n  expected size: {d}\n  actual size: {d}\n", .{ expected_size_original_rom, original_rom_file_len });
+    const original_rom_file_size = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size", .{});
+    const expected_size_original_rom = takeVariableWidthInteger(self.patchReader());
+    if (expected_size_original_rom != original_rom_file_size) {
+        fatal("original ROM file size does not match expected size.\n  expected size: {d}\n  actual size: {d}\n", .{ expected_size_original_rom, original_rom_file_size });
     } else {
         disp.clearAndPrint("\x1b[32moriginal ROM file size matches expected size (\x1b[0;1m{d}\x1b[0;32m)\x1b[0m\n", .{expected_size_original_rom});
     }
 }
 
 fn apply(self: *Patcher) void {
-    const expected_size_patched_rom = takeVariableWidthInteger(self); // size of patched ROM file
+    self.original_rom_file_reader.seekTo(0) catch fatal("could not reset seek position of original ROM file", .{});
+    const expected_size_patched_rom = takeVariableWidthInteger(self.patchReader()); // size of patched ROM file
 
-    const patch_file_len = self.patch_file_reader.getSize() catch fatal("could not get patch file size", .{});
+    const patch_file_size = self.patch_file_reader.getSize() catch fatal("could not get patch file size", .{});
     const original_rom_file_len = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size", .{});
-    while (self.patch_file_reader.logicalPos() < patch_file_len - 12) {
-        const bytes_to_skip = takeVariableWidthInteger(self);
+    while (self.patch_file_reader.logicalPos() < patch_file_size - 12) {
+        const bytes_to_skip = takeVariableWidthInteger(self.patchReader());
         if (bytes_to_skip > 0) {
             if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
                 _ = self.patchedRomWriter().splatByteAll(0, bytes_to_skip) catch fatal("could not write 0s to patched ROM file", .{});
@@ -65,7 +96,7 @@ fn apply(self: *Patcher) void {
             patch_byte_to_xor = self.patchReader().takeByte() catch fatal("could not read XOR byte from patch file", .{});
         }
 
-        if (self.patch_file_reader.logicalPos() < patch_file_len - 12) {
+        if (self.patch_file_reader.logicalPos() < patch_file_size - 12) {
             if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
                 self.patchedRomWriter().writeByte(0) catch fatal("could not write 0 to patched ROM file", .{});
             } else {
@@ -84,14 +115,25 @@ fn apply(self: *Patcher) void {
     } else {
         disp.clearAndPrint("\x1b[32mfinal patched ROM file size matches expected size (\x1b[0;1m{d}\x1b[0;32m)\x1b[0m\n", .{expected_size_patched_rom});
     }
+
+    // validate patched ROM checksum
+    var patched_rom_file_reader = self.patched_rom_file_writer.moveToReader();
+    patched_rom_file_reader.seekTo(0) catch fatal("could not seek to start of patched ROM file for checksum validation", .{});
+    self.patch_file_reader.seekTo(patch_file_size - 8) catch fatal("could not to patched ROM checksum in patch file", .{});
+    const checksum_expected = self.patchReader().takeInt(u32, .little) catch fatal("could not get patched ROM checksum in patch file", .{});
+    const checksum_actual = calcCrc32FromFileReader(&patched_rom_file_reader, null);
+    if (checksum_expected != checksum_actual) {
+        fatal("patched ROM checksum does not match calculated checksum\n  expected: 0x{x:0>8}\n  actual: 0x{x:0>8}\n", .{ checksum_expected, checksum_actual });
+    } else {
+        disp.clearAndPrint("\x1b[32mpatched ROM checksum matches calculated checksum (\x1b[0;1m0x{x:0>8}\x1b[0;32m)\x1b[0m\n", .{checksum_actual});
+    }
 }
 
-fn takeVariableWidthInteger(self: *Patcher) usize {
+fn takeVariableWidthInteger(reader: *std.Io.Reader) usize {
     var result: usize = 0;
     var shift: u6 = 0;
-
     while (true) {
-        const byte = self.patchReader().takeByte() catch fatal("could not read byte from patch file", .{});
+        const byte = reader.takeByte() catch fatal("could not read byte from patch file", .{});
         if ((byte & 0x80) != 0) {
             result += @as(usize, byte & 0x7f) << shift;
             break;
@@ -99,22 +141,47 @@ fn takeVariableWidthInteger(self: *Patcher) usize {
         result += @as(usize, byte | 0x80) << shift;
         shift += 7;
     }
-
     return result;
 }
 
-fn calcCrc32(data: []const u8) u32 {
+/// Calculates a 32-bit CRC checksum from a file reader.
+/// Pass `null` to `amount_to_read` to read the entire file.
+fn calcCrc32FromFileReader(file_reader: *std.fs.File.Reader, amount_to_read: ?usize) u32 {
+    file_reader.seekTo(0) catch fatal("could not reset seek position of file reader", .{});
+    const file_size = file_reader.getSize() catch fatal("could not get file size from file reader", .{});
+    var reader = &file_reader.interface;
+
     var crc32: u32 = 0xffffffff;
-    for (data) |byte| {
+    for (0..amount_to_read orelse file_size) |_| {
+        const byte = reader.takeByte() catch |e| fatal("{} could not read byte from reader", .{e});
         crc32 ^= byte;
         crc32 = (crc32 >> 8) ^ crc32_table[crc32 & 0xff];
     }
+
     return ~crc32;
 }
 
-test calcCrc32 {
-    try std.testing.expectEqual(0x8587D865, calcCrc32("abcde"));
-    try std.testing.expectEqual(0x0f5cc4b4, calcCrc32(&[_]u8{ 0xf3, 0x85, 0x9a, 0x84, 0xfc, 0x24, 0xde, 0x22 }));
+test calcCrc32FromFileReader {
+    var tmp_dir = std.testing.tmpDir(.{});
+    defer tmp_dir.cleanup();
+
+    const f = try tmp_dir.dir.createFile("crc32-check", .{ .read = true });
+    defer f.close();
+    var f_file_writer = f.writer(&.{});
+
+    {
+        var f_reader_buf: [1024]u8 = undefined;
+        var f_file_reader = f.reader(&f_reader_buf);
+        try f_file_writer.interface.writeAll("abcde");
+        try std.testing.expectEqual(0x8587D865, calcCrc32FromFileReader(&f_file_reader, null));
+    }
+    try f_file_writer.seekTo(0);
+    {
+        var f_reader_buf: [1024]u8 = undefined;
+        var f_file_reader = f.reader(&f_reader_buf);
+        try f_file_writer.interface.writeAll(&[_]u8{ 0xf3, 0x85, 0x9a, 0x84, 0xfc, 0x24, 0xde, 0x22 });
+        try std.testing.expectEqual(0x0f5cc4b4, calcCrc32FromFileReader(&f_file_reader, null));
+    }
 }
 
 pub const crc32_table = blk: {

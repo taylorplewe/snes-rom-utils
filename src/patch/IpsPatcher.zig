@@ -1,3 +1,5 @@
+// the IPS patch file format documentation I used can be found here: https://zerosoft.zophar.net/ips.php
+
 const std = @import("std");
 const disp = @import("../disp.zig");
 const fatal = disp.fatal;
