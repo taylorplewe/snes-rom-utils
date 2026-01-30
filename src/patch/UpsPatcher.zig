@@ -27,12 +27,18 @@ fn validate(self: *Patcher) void {
     if (!std.mem.eql(u8, self.patchReader().peekArray(4) catch "", "UPS1")) {
         fatal("UPS patch files must begin with the word \"UPS1\"", .{});
     }
+    self.patch_file_reader.seekTo(4) catch fatal("could not seek patch file", .{});
+    const expected_size_original_rom = takeVariableWidthInteger(self);
+    const original_rom_file_len = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size", .{});
+    if (expected_size_original_rom != original_rom_file_len) {
+        fatal("original ROM file size does not match expected size.\n  expected size: {d}\n  actual size: {d}\n", .{ expected_size_original_rom, original_rom_file_len });
+    } else {
+        disp.clearAndPrint("\x1b[32moriginal ROM file size matches expected size (\x1b[0;1m{d}\x1b[0;32m)\x1b[0m\n", .{expected_size_original_rom});
+    }
 }
 
 fn apply(self: *Patcher) void {
-    self.patch_file_reader.seekTo(4) catch fatal("could not seek patch file", .{});
-    _ = takeVariableWidthInteger(self); // size of original ROM file
-    _ = takeVariableWidthInteger(self); // size of patched ROM file
+    const expected_size_patched_rom = takeVariableWidthInteger(self); // size of patched ROM file
 
     const patch_file_len = self.patch_file_reader.getSize() catch fatal("could not get patch file size", .{});
     const original_rom_file_len = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size", .{});
@@ -69,7 +75,15 @@ fn apply(self: *Patcher) void {
             }
         }
     }
-    self.patchedRomWriter().flush() catch fatal("could not flush patched ROM file prior to seek", .{});
+    self.patchedRomWriter().flush() catch fatal("could not flush patched ROM file", .{});
+
+    // validate patched ROM size
+    const patched_rom_file_len = self.patched_rom_file_writer.pos;
+    if (patched_rom_file_len != expected_size_patched_rom) {
+        fatal("final patched ROM file size does not match expected size.\n  expected size: {d}\n  actual size: {d}\n", .{ expected_size_patched_rom, patched_rom_file_len });
+    } else {
+        disp.clearAndPrint("\x1b[32mfinal patched ROM file size matches expected size (\x1b[0;1m{d}\x1b[0;32m)\x1b[0m\n", .{expected_size_patched_rom});
+    }
 }
 
 fn takeVariableWidthInteger(self: *Patcher) usize {

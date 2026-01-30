@@ -53,6 +53,6 @@ fn apply(self: *Patcher) void {
             const rle_byte = self.patchReader().takeByte() catch fatal("could not read RLE byte", .{});
             self.patchedRomWriter().splatByteAll(rle_byte, rle_length) catch fatal("could not write RLE byte", .{});
         }
-        self.patchedRomWriter().flush() catch unreachable;
+        self.patchedRomWriter().flush() catch fatal("could not flush patched ROM file", .{});
     }
 }
