@@ -1,29 +1,37 @@
 const std = @import("std");
+const disp = @import("../disp.zig");
+const fatal = disp.fatal;
 const Patcher = @This();
 
 vtable: *const VTable,
-file: std.fs.File,
 allocator: *const std.mem.Allocator,
 
-reader_buf: []u8,
-reader_core: std.fs.File.Reader,
+patch_file_reader: *std.fs.File.Reader,
+original_rom_file_reader: *std.fs.File.Reader,
+patched_rom_file_writer: *std.fs.File.Writer,
 
 pub const VTable = struct {
     /// Validate that the file meets the format criteria
     validate: *const fn (self: *Patcher) void,
 
-    /// Apply the patch to the ROM at the given path.
-    apply: *const fn (self: *Patcher, rom_file_path: []const u8) void,
+    /// Apply the patch to the ROM provided at initialization
+    apply: *const fn (self: *Patcher) void,
 };
 
 pub fn validate(self: *Patcher) void {
     self.vtable.validate(self);
 }
 
-pub fn apply(self: *Patcher, rom_file_path: []const u8) void {
-    self.vtable.apply(self, rom_file_path);
+pub fn apply(self: *Patcher) void {
+    self.vtable.apply(self);
 }
 
-pub inline fn reader(self: *Patcher) *std.io.Reader {
-    return &self.reader_core.interface;
+pub inline fn patchReader(self: *Patcher) *std.io.Reader {
+    return &self.patch_file_reader.*.interface;
+}
+pub inline fn originalRomReader(self: *Patcher) *std.io.Reader {
+    return &self.original_rom_file_reader.*.interface;
+}
+pub inline fn patchedRomWriter(self: *Patcher) *std.io.Writer {
+    return &self.patched_rom_file_writer.*.interface;
 }
