@@ -51,9 +51,7 @@ fn apply(self: *Patcher) void {
         } else {
             const rle_length = self.patchReader().takeInt(u16, .big) catch fatal("could not read RLE length", .{});
             const rle_byte = self.patchReader().takeByte() catch fatal("could not read RLE byte", .{});
-            for (0..rle_length) |_| {
-                self.patchedRomWriter().writeByte(rle_byte) catch fatal("could not write RLE byte", .{});
-            }
+            self.patchedRomWriter().splatByteAll(rle_byte, rle_length) catch fatal("could not write RLE byte", .{});
         }
         self.patchedRomWriter().flush() catch unreachable;
     }

@@ -66,5 +66,6 @@ pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
     disp.printLoading("patching ROM");
     patcher.validate();
     patcher.apply();
+    // patcher.patchedRomWriter().flush() catch fatal("could not flush patched ROM writer", .{});
     disp.clearAndPrint("\x1b[32mROM file \x1b[0;1m{s}\x1b[0;32m patched successfully", .{original_rom_path});
 }
