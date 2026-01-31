@@ -19,15 +19,19 @@ pub fn init(
     original_rom_file_reader: *std.fs.File.Reader,
     patched_rom_file_writer: *std.fs.File.Writer,
 ) Patcher {
-    return .{
-        .vtable = &.{
-            .validate = IpsPatcher.validate,
-            .apply = IpsPatcher.apply,
-        },
-        .allocator = allocator,
-        .patch_file_reader = patch_file_reader,
-        .original_rom_file_reader = original_rom_file_reader,
-        .patched_rom_file_writer = patched_rom_file_writer,
+    return blk: {
+        var patcher: Patcher = .{
+            .vtable = &.{
+                .validate = IpsPatcher.validate,
+                .apply = IpsPatcher.apply,
+            },
+            .allocator = allocator,
+            .patch_file_reader = patch_file_reader,
+            .original_rom_file_reader = original_rom_file_reader,
+            .patched_rom_file_writer = patched_rom_file_writer,
+        };
+        _ = patcher.originalRomReader().streamRemaining(patcher.patchedRomWriter()) catch fatal("could not copy original ROM");
+        break :blk patcher;
     };
 }
 

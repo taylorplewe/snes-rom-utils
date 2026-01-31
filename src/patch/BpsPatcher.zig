@@ -7,6 +7,16 @@ const fatalFmt = disp.fatalFmt;
 const Patcher = @import("./Patcher.zig");
 
 const BpsPatcher = @This();
+const ActionKind = enum {
+    SourceRead,
+    TargetRead,
+    SourceCopy,
+    TargetCopy,
+};
+const Action = struct {
+    kind: ActionKind,
+    length: usize,
+};
 
 pub fn init(
     allocator: *const std.mem.Allocator,
@@ -73,46 +83,57 @@ fn apply(self: *Patcher) void {
     self.original_rom_file_reader.seekTo(0) catch fatal("could not reset seek position of original ROM file");
     const expected_size_patched_rom = takeVariableWidthInteger(self.patchReader()); // size of patched ROM file
 
-    // length of metadata to skip
+    // skip over optional metadata
     const metadata_len = takeVariableWidthInteger(self.patchReader());
     if (metadata_len > 0) {
-        // self.patch_file_reader.seekBy(metadata_len) catch fatal("could not skip over metadata in patch file");
+        self.patch_file_reader.seekBy(@intCast(metadata_len)) catch fatal("could not skip over metadata in patch file");
     }
 
     // main data portion
     const patch_file_size = self.patch_file_reader.getSize() catch fatal("could not get patch file size");
-    const original_rom_file_len = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size");
+    // const original_rom_file_len = self.original_rom_file_reader.getSize() catch fatal("could not get original ROM file size");
     while (self.patch_file_reader.logicalPos() < patch_file_size - 12) {
-        const bytes_to_skip = takeVariableWidthInteger(self.patchReader());
-        if (bytes_to_skip > 0) {
-            if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
-                _ = self.patchedRomWriter().splatByteAll(0, bytes_to_skip) catch fatal("could not write 0s to patched ROM file");
-            } else {
-                self.original_rom_file_reader.seekBy(@intCast(bytes_to_skip)) catch fatal("could not seek original ROM file");
-                self.patchedRomWriter().flush() catch fatal("could not flush patched ROM file prior to seek");
-                self.patched_rom_file_writer.seekTo(self.original_rom_file_reader.logicalPos()) catch fatal("could not seek patched ROM file");
-            }
-        }
+        const action_kind_and_length = takeVariableWidthInteger(self.patchReader());
+        const action: Action = .{
+            .kind = @enumFromInt(action_kind_and_length & 0b11),
+            .length = (action_kind_and_length >> 2) + 1,
+        };
 
-        var patch_byte_to_xor = self.patchReader().takeByte() catch fatal("could not read XOR byte from patch file");
-        while (patch_byte_to_xor != 0) {
-            const byte_to_write = patch_byte_to_xor ^
-                if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len)
-                    0
-                else
-                    self.originalRomReader().takeByte() catch fatal("could not read byte from original ROM file");
-            self.patchedRomWriter().writeByte(byte_to_write) catch fatal("could not write XOR'd byte to patched ROM file");
-            patch_byte_to_xor = self.patchReader().takeByte() catch fatal("could not read XOR byte from patch file");
-        }
+        switch (action.kind) {
+            .SourceRead => self.originalRomReader().streamExact(self.patchedRomWriter(), action.length) catch fatal("could not stream data from original ROM to patched ROM during SourceRead"),
+            .TargetRead => self.patchReader().streamExact(self.patchedRomWriter(), action.length) catch fatal("could not stream data from patch file to patched ROM during TargetRead"),
+            .SourceCopy => {
+                const offset_data = takeVariableWidthInteger(self.patchReader());
+                const relative_offset = offset_data >> 1;
+                const prev_original_rom_file_pos = self.original_rom_file_reader.logicalPos();
+                const new_original_rom_file_pos =
+                    if (offset_data & 1 == 1)
+                        prev_original_rom_file_pos - relative_offset
+                    else
+                        prev_original_rom_file_pos + relative_offset;
+                self.original_rom_file_reader.seekTo(new_original_rom_file_pos) catch fatal("could not seek to new position in original file");
+                self.originalRomReader().streamExact(self.patchedRomWriter(), action.length) catch fatal("could not stream data from original ROM to patched ROM during SourceCopy");
+                self.original_rom_file_reader.seekTo(prev_original_rom_file_pos) catch fatal("could not reset original ROM seek position during SourceCopy");
+            },
+            .TargetCopy => {
+                const offset_data = takeVariableWidthInteger(self.patchReader());
+                const relative_offset = offset_data >> 1;
+                const prev_patched_rom_file_pos = self.patched_rom_file_writer.pos;
+                const new_patched_rom_file_pos =
+                    if (offset_data & 1 == 1)
+                        prev_patched_rom_file_pos - relative_offset
+                    else
+                        prev_patched_rom_file_pos + relative_offset;
 
-        if (self.patch_file_reader.logicalPos() < patch_file_size - 12) {
-            if (self.original_rom_file_reader.logicalPos() >= original_rom_file_len) {
-                self.patchedRomWriter().writeByte(0) catch fatal("could not write 0 to patched ROM file");
-            } else {
-                self.originalRomReader().discardAll(1) catch fatal("could not discard byte from original ROM file");
-                self.patchedRomWriter().flush() catch fatal("could not flush patched ROM file prior to seek");
-                self.patched_rom_file_writer.seekTo(self.original_rom_file_reader.logicalPos()) catch fatal("could not seek patched ROM file");
-            }
+                std.debug.print("TargetCopy: prev_patched_rom_file_pos = {}\n", .{prev_patched_rom_file_pos});
+                std.debug.print("TargetCopy: new_patched_rom_file_pos = {}\n", .{new_patched_rom_file_pos});
+
+                // set up new temporary reader
+                var patched_rom_file_reader = self.patched_rom_file_writer.file.reader(&.{}); // un-buffered because we don't know how far back the read head is from the write head
+                var patched_rom_reader = &patched_rom_file_reader.interface;
+                patched_rom_file_reader.seekTo(new_patched_rom_file_pos) catch fatal("could not seek temporary patched ROM reader");
+                patched_rom_reader.streamExact(self.patchedRomWriter(), action.length) catch |e| fatalFmt("{} could not stream data from patched ROM to itself in TargetCopy", .{e});
+            },
         }
     }
     self.patchedRomWriter().flush() catch fatal("could not flush patched ROM file");

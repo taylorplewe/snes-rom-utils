@@ -37,8 +37,7 @@ pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
 
     // patched ROM I/O
     const patched_rom_path = std.fmt.allocPrint(allocator.*, "{s}.patched.{s}", .{ original_rom_path_base, original_rom_path_ext }) catch fatal("could not allocate memory for patched ROM path");
-    std.fs.cwd().copyFile(original_rom_path, std.fs.cwd(), patched_rom_path, .{}) catch fatal("could not copy ROM file");
-    const patched_rom_file = std.fs.cwd().openFile(patched_rom_path, .{ .mode = .read_write }) catch fatalFmt("could not open patched ROM file \x1b[1m{s}\x1b[0m", .{patched_rom_path});
+    const patched_rom_file = std.fs.cwd().createFile(patched_rom_path, .{ .read = true }) catch fatalFmt("could not open patched ROM file \x1b[1m{s}\x1b[0m", .{patched_rom_path});
     const patched_rom_writer_buf = allocator.alloc(u8, std.math.maxInt(u16)) catch fatal("could not allocate memory for patched ROM writer buffer");
     var patched_rom_file_writer = patched_rom_file.writer(patched_rom_writer_buf);
 
