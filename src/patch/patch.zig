@@ -4,15 +4,17 @@ const fatal = disp.fatal;
 const Patcher = @import("./Patcher.zig");
 const IpsPatcher = @import("./IpsPatcher.zig");
 const UpsPatcher = @import("./UpsPatcher.zig");
+const BpsPatcher = @import("./BpsPatcher.zig");
 
 const PatchFormat = enum {
     ips,
     ups,
+    bps,
 };
 
 pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
     if (args.len < 2) {
-        fatal("must provide ROM filepath followed by IPS patch filepath", .{});
+        fatal("must provide ROM filepath followed by patch filepath", .{});
     }
     const original_rom_path = args[0];
     const patch_path = args[1];
@@ -56,6 +58,12 @@ pub fn patch(allocator: *const std.mem.Allocator, args: [][:0]u8) void {
             &patched_rom_file_writer,
         ),
         .ups => UpsPatcher.init(
+            allocator,
+            &patch_file_reader,
+            &original_rom_file_reader,
+            &patched_rom_file_writer,
+        ),
+        .bps => BpsPatcher.init(
             allocator,
             &patch_file_reader,
             &original_rom_file_reader,
