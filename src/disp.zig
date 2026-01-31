@@ -10,7 +10,11 @@ pub fn clearAndPrint(comptime fmt: []const u8, args: anytype) void {
     return;
 }
 
-pub fn fatal(comptime fmt: []const u8, args: anytype) noreturn {
+pub inline fn fatal(comptime msg: []const u8) noreturn {
+    fatalFmt(msg, .{});
+}
+
+pub fn fatalFmt(comptime fmt: []const u8, args: anytype) noreturn {
     var stderr_buf: [1024]u8 = undefined;
     var stderr_writer = std.fs.File.stderr().writer(&stderr_buf);
     var stderr = &stderr_writer.interface;

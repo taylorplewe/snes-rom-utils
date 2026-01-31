@@ -1,6 +1,7 @@
 const std = @import("std");
 const disp = @import("disp.zig");
 const fatal = disp.fatal;
+const fatalFmt = disp.fatalFmt;
 const info = @import("info.zig");
 const checksum = @import("checksum.zig");
 const split = @import("split.zig");
@@ -10,13 +11,13 @@ pub fn main() void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    const args = std.process.argsAlloc(arena.allocator()) catch fatal("unable to allocate memory for arguments", .{});
+    const args = std.process.argsAlloc(arena.allocator()) catch fatal("unable to allocate memory for arguments");
     if (args.len < 3) printUsageAndExit();
 
     const util_name = args[1];
     const rom_path = args[2];
 
-    const rom_file = std.fs.cwd().openFile(rom_path, .{ .mode = .read_write }) catch fatal("could not open file \x1b[1m{s}\x1b[0m", .{rom_path});
+    const rom_file = std.fs.cwd().openFile(rom_path, .{ .mode = .read_write }) catch fatalFmt("could not open file \x1b[1m{s}\x1b[0m", .{rom_path});
 
     if (std.mem.eql(u8, util_name, "info")) {
         info.displayInfo();
@@ -27,7 +28,7 @@ pub fn main() void {
     } else if (std.mem.eql(u8, util_name, "patch")) {
         patch.patch(&arena.allocator(), args[2..]);
     } else {
-        fatal("util with the name \x1b[1m{s}\x1b[0m not found", .{util_name});
+        fatalFmt("util with the name \x1b[1m{s}\x1b[0m not found", .{util_name});
     }
 }
 
